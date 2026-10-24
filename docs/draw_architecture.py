@@ -2,6 +2,8 @@
 import cairosvg, os, sys
 
 OUT = sys.argv[1]
+VARIANT = sys.argv[2] if len(sys.argv) > 2 else "thinking"   # "thinking" | "classic"
+THINK = VARIANT == "thinking"
 os.makedirs(OUT, exist_ok=True)
 
 W, H = 840, 800
@@ -89,7 +91,7 @@ add(f'<rect width="{W}" height="{H}" fill="white"/>')
 # ---------------------------------------------------------------- encoder column
 ecx, ex0, ex1, erx = 180, 80, 280, 296
 group(50, 365, 312, 632)
-text(34, 505, "×4", 18, "bold")
+text(34, 505, "×4" if THINK else "×6", 18, "bold")
 text(181, 727, "Context tokens   [B, 256]", 13, "bold")
 text(181, 745, "clean, left-padded dialogue history", 11, color="#555")
 box(ex0, 650, ex1, 684, "tied", ["Token Embedding  E"])
@@ -104,27 +106,35 @@ arrow([(ecx, y), (ecx, 346)])
 box(ex0, 320, ex1, 346, "norm", ["RMSNorm"])
 
 # ---------------------------------------------------------------- Thinking module
-group(50, 92, 312, 302, fill="#F8F4FC", stroke="#8A6BB8", dash=True)
-text(64, 110, "Thinking module", 12, "bold", anchor="start", color="#6A4C98")
-arrow([(ecx, 320), (ecx, 290)])
-box(80, 256, 280, 290, "tied", ["Cosine energy vs. vocabulary", "s = cos(H, E)   256 × 12 288"])
-# two channels
-arrow([(130, 256), (130, 241)])
-arrow([(230, 256), (230, 241)])
-box(66, 181, 176, 241, "think", ["Words", "per position", "α-weighted  s · E"])
-box(186, 181, 298, 241, "think", ["Thought", "Σ positions, centred", "LN → SiLU → proj"])
-plus(ecx, 162)
-arrow([(130, 181), (130, 162), (ecx - 10, 162)])
-arrow([(230, 181), (230, 162), (ecx + 10, 162)])
-arrow([(ecx, 152), (ecx, 146)])
-box(ex0, 120, ex1, 146, "norm", ["RMSNorm"])
+if THINK:
+    group(50, 92, 312, 302, fill="#F8F4FC", stroke="#8A6BB8", dash=True)
+    text(64, 110, "Thinking module", 12, "bold", anchor="start", color="#6A4C98")
+    arrow([(ecx, 320), (ecx, 290)])
+    box(80, 256, 280, 290, "tied", ["Cosine energy vs. vocabulary", "s = cos(H, E)   256 × 12 288"])
+    # two channels
+    arrow([(130, 256), (130, 241)])
+    arrow([(230, 256), (230, 241)])
+    box(66, 181, 176, 241, "think", ["Words", "per position", "α-weighted  s · E"])
+    box(186, 181, 298, 241, "think", ["Thought", "Σ positions, centred", "LN → SiLU → proj"])
+    plus(ecx, 162)
+    arrow([(130, 181), (130, 162), (ecx - 10, 162)])
+    arrow([(230, 181), (230, 162), (ecx + 10, 162)])
+    arrow([(ecx, 152), (ecx, 146)])
+    box(ex0, 120, ex1, 146, "norm", ["RMSNorm"])
 
 # memory route to cross-attention
-mem_y = 133
-text(432, 300, "memory  M", 12, "bold", anchor="end", color="#6A4C98")
-text(432, 315, "[B, 256, 384]", 11, anchor="end", color="#6A4C98")
-text(432, 332, "computed once", 11, anchor="end", color="#666", style="italic")
-text(432, 345, "per message", 11, anchor="end", color="#666", style="italic")
+if THINK:
+    mem_y = 133
+    text(432, 300, "memory  M", 12, "bold", anchor="end", color="#6A4C98")
+    text(432, 315, "[B, 256, 384]", 11, anchor="end", color="#6A4C98")
+    text(432, 332, "computed once", 11, anchor="end", color="#666", style="italic")
+    text(432, 345, "per message", 11, anchor="end", color="#666", style="italic")
+else:
+    mem_y = 333
+    text(300, 282, "memory  M", 12, "bold", anchor="start", color="#6A4C98")
+    text(300, 296, "[B, 256, 384]", 11, anchor="start", color="#6A4C98")
+    text(300, 311, "computed once", 11, anchor="start", color="#666", style="italic")
+    text(300, 324, "per message", 11, anchor="start", color="#666", style="italic")
 
 # ---------------------------------------------------------------- decoder column
 dcx, dx0, dx1, drx = 620, 520, 720, 736
@@ -147,15 +157,18 @@ arrow([(dcx, 195), (dcx, 174)])
 box(dx0, 136, dx1, 174, "tied", ["LM head", "weights tied to E"])
 arrow([(dcx, 140), (dcx, 104)])
 text(dcx + 8, 125, "logits  [B, L_ans, 12 288]", 11, anchor="start", color="#444")
-box(500, 52, 740, 104, "loss", ["Masked-diffusion objective", "CE on masked positions, weighted 1/t", "(pretrain &amp; SFT share the same step)"])
+box(500, 52, 740, 104, "loss", ["Masked-diffusion objective", "CE on masked positions, weighted 1/t", "(pretraining and SFT share the same step)"])
 
 arrow([(ex1, mem_y), (440, mem_y), (440, 417), (dx0, 417)], width=1.6)
 
 # ---------------------------------------------------------------- legend
 lx, ly = 380, 770
-for i, (k, lab) in enumerate([("attn", "attention"), ("ffn", "feed-forward"), ("norm", "normalisation"),
-                              ("tied", "weight-tied to E"), ("think", "Thinking (experimental)")]):
-    xx = 40 + i * 158
+items = [("attn", "attention"), ("ffn", "feed-forward"), ("norm", "normalisation"), ("tied", "weight-tied to E")]
+if THINK:
+    items.append(("think", "Thinking module"))
+step = 158 if THINK else 200
+for i, (k, lab) in enumerate(items):
+    xx = (40 if THINK else 80) + i * step
     f, s = C[k]
     add(f'<rect x="{xx}" y="{ly-11}" width="16" height="13" rx="3" fill="{f}" stroke="{s}" stroke-width="1.2"/>')
     text(xx + 22, ly, lab, 11, anchor="start", color="#444")
@@ -163,7 +176,7 @@ text(W / 2, 22, "", 1)
 
 add("</svg>")
 svg = "\n".join(parts)
-with open(os.path.join(OUT, "architecture.svg"), "w") as fh:
+with open(os.path.join(OUT, f"architecture-{VARIANT}.svg"), "w") as fh:
     fh.write(svg)
-cairosvg.svg2png(bytestring=svg.encode(), write_to=os.path.join(OUT, "architecture.png"), scale=2.0)
+cairosvg.svg2png(bytestring=svg.encode(), write_to=os.path.join(OUT, f"architecture-{VARIANT}.png"), scale=2.0)
 print("done")

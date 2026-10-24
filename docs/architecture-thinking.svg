@@ -124,7 +124,7 @@
 <rect x="500" y="52" width="240" height="52" rx="6" fill="#EFEFEF" stroke="#8A8A8A" stroke-width="1.4"/>
 <text x="620.0" y="68.5" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="13" font-weight="bold" font-style="normal" text-anchor="middle" fill="#222">Masked-diffusion objective</text>
 <text x="620.0" y="83.5" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle" fill="#444">CE on masked positions, weighted 1/t</text>
-<text x="620.0" y="96.5" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle" fill="#444">(pretrain &amp; SFT share the same step)</text>
+<text x="620.0" y="96.5" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" font-weight="normal" font-style="normal" text-anchor="middle" fill="#444">(pretraining and SFT share the same step)</text>
 <path d="M 280 133 L 440 133 L 440 417 L 520 417" fill="none" stroke="#333" stroke-width="1.6" marker-end="url(#ah)"/>
 <rect x="40" y="759" width="16" height="13" rx="3" fill="#FCE3CF" stroke="#D9895B" stroke-width="1.2"/>
 <text x="62" y="770" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" font-weight="normal" font-style="normal" text-anchor="start" fill="#444">attention</text>
@@ -135,6 +135,6 @@
 <rect x="514" y="759" width="16" height="13" rx="3" fill="#DDF0DD" stroke="#5FA36A" stroke-width="1.2"/>
 <text x="536" y="770" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" font-weight="normal" font-style="normal" text-anchor="start" fill="#444">weight-tied to E</text>
 <rect x="672" y="759" width="16" height="13" rx="3" fill="#EBE1F5" stroke="#8A6BB8" stroke-width="1.2"/>
-<text x="694" y="770" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" font-weight="normal" font-style="normal" text-anchor="start" fill="#444">Thinking (experimental)</text>
+<text x="694" y="770" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" font-weight="normal" font-style="normal" text-anchor="start" fill="#444">Thinking module</text>
 <text x="420.0" y="22" font-family="Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="1" font-weight="normal" font-style="normal" text-anchor="middle" fill="#222"></text>
 </svg>

@@ -4,51 +4,57 @@
 ![python](https://img.shields.io/badge/python-3-3776AB?logo=python&logoColor=white)
 ![pytorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white)
 ![kaggle](https://img.shields.io/badge/trained%20on-Kaggle%20T4-20BEFF?logo=kaggle&logoColor=white)
-![params](https://img.shields.io/badge/params-19.8M-6A4C98)
+![params](https://img.shields.io/badge/params-~20M-6A4C98)
 
 A small conversational language model built from scratch in PyTorch and designed to run fully on-device. Instead of the usual left-to-right decoder, the model is a **masked-diffusion encoder–decoder Transformer**: the dialogue context is encoded once, and the reply is produced by iteratively un-masking a fixed-size answer window.
 
-The project walks through every stage of a production LLM lifecycle at a scale that fits a single free-tier GPU. Two models go through the same pipeline: the main model with an experimental Thinking module, and a parameter-matched baseline without it.
+The project walks through every stage of a production LLM lifecycle at a scale that fits a single free-tier GPU. Two parameter-matched variants go through the identical pipeline: a **classic** encoder–decoder and a variant with an experimental **Thinking** module.
 
-| Stage | What it means here | Thinking model | Baseline |
-| --- | --- | --- | --- |
-| Data & tokenizer | corpus collection, cleaning, deduplication, byte-level BPE | done | shared |
-| Pretraining | masked-diffusion objective on 1.47B tokens of educational web text | done | coming soon |
-| Supervised fine-tuning | dialogue data, loss on the assistant turn only | done | coming soon |
-| Reinforcement learning | GRPO with rule-based rewards on top of SFT | done | coming soon |
-| Benchmarking | zero-shot suites against reference models | done | coming soon |
-| Production runtime | export and a C++ inference runtime | coming soon | — |
-
-> Work in progress. Sections marked *coming soon* describe planned work that is not in the code yet.
+| Stage | What it means here | Status |
+| --- | --- | --- |
+| Data & tokenizer | corpus collection, cleaning, deduplication, byte-level BPE | done |
+| Pretraining | masked-diffusion objective on 1.84B tokens of educational web text | done |
+| Supervised fine-tuning | dialogue data, loss on the assistant turn only | done |
+| Reinforcement learning | GRPO with rule-based rewards on top of SFT | done |
+| Benchmarking | zero-shot suites against reference models | done |
+| Production runtime | export and a C++ inference runtime | coming soon |
 
 ---
 
 ## Architecture
 
-![Model architecture](docs/architecture.png)
+<table>
+  <tr>
+    <td align="center"><b>Classic</b></td>
+    <td align="center"><b>Thinking</b></td>
+  </tr>
+  <tr>
+    <td><img src="docs/architecture-classic.png" alt="Classic architecture"></td>
+    <td><img src="docs/architecture-thinking.png" alt="Thinking architecture"></td>
+  </tr>
+</table>
 
 The context and the answer live in two separate windows. The **encoder** reads the clean dialogue history once with bidirectional self-attention. The **decoder** sees the answer slot, in which a random fraction of tokens has been replaced with `[MASK]`, and reads the encoder output through cross-attention. Generation runs the decoder for several steps over the answer slot only, so the cost of a long context is paid once per message rather than once per step. The same split was later found to match the encoder–decoder design of E2D2 [2].
 
-All blocks use the current standard Transformer recipe — pre-norm RMSNorm, SwiGLU feed-forward, rotary position embeddings — with attention assembled by hand from linear projections rather than taken from a library module. Input embeddings, the LM head and the vocabulary projection inside the Thinking module share one weight matrix.
+All blocks use the current standard Transformer recipe — pre-norm RMSNorm, SwiGLU feed-forward, rotary position embeddings — with attention assembled by hand from linear projections rather than taken from a library module. Input embeddings and the LM head share one weight matrix.
 
-| Property | Value |
-| --- | --- |
-| Objective | masked (absorbing-state) discrete diffusion, MDLM-style [1] |
-| Width / heads | d_model 384, 6 heads × 64 |
-| Depth | 4 encoder blocks, 2 decoder blocks |
-| Context window | 256 tokens |
-| Answer window | 128 tokens (pretraining), 64 tokens (SFT, RL) |
-| Vocabulary | 12 288, byte-level BPE, tied embeddings |
-| Position encoding | RoPE in self-attention; none in cross-attention |
-| Parameters | 19.8M |
+| Property | Classic | Thinking |
+| --- | --- | --- |
+| Objective | masked (absorbing-state) discrete diffusion, MDLM-style [1] | same |
+| Width / heads | d_model 384, 6 heads × 64 | same |
+| Encoder blocks | 6 | 4 + Thinking module |
+| Decoder blocks | 2 | 2 |
+| Context window | 256 tokens | same |
+| Answer window | 128 tokens (pretraining), 64 tokens (SFT, RL) | same |
+| Vocabulary | 12 288, byte-level BPE, tied embeddings | same |
+| Position encoding | RoPE in self-attention; none in cross-attention | same |
+| Parameters | 20.1M | 19.8M |
+
+**Thinking module.** A small module of my own design that replaces two encoder blocks: it compares each context position with the whole vocabulary through the shared embedding matrix and passes the result on as the decoder's memory.
 
 ### Why diffusion for a phone
 
 The target runtime is a mobile inference engine that works best with a static computation graph. A masked-diffusion model maps naturally onto one: the input is always `[1, L]`, the output is always `[1, L, V]`, and there is no KV-cache to manage between steps. The encoder–decoder split then keeps the per-step cost proportional to the 64-token answer window instead of the full 320-token sequence.
-
-### Thinking module (experimental)
-
-A small module of my own design sits between the encoder and the decoder: it compares each context position with the whole vocabulary through the shared embedding matrix and passes the result on as the decoder's memory. Whether it helps is tested against the baseline without it.
 
 ---
 
@@ -65,6 +71,8 @@ The tokenizer is a byte-level BPE with 12 288 entries. The size was chosen by co
 
 ## Training
 
+Both variants are trained with the same data, schedule, hyperparameters and seeds; only the model definition differs.
+
 ### Pretraining and SFT
 
 Both stages run the same step; only the data differs.
@@ -78,12 +86,19 @@ During pretraining a 384-token window from the corpus is split into 256 context 
 | | Pretraining | SFT |
 | --- | --- | --- |
 | Initialisation | random | best pretraining checkpoint |
-| Steps × batch | 40 000 × 96 | multi-epoch, checkpoint chosen by validation loss |
-| Tokens seen | ~1.47B | ~5M per epoch |
+| Steps × batch | 50 000 × 96 | 20 epochs × 455 steps × 96 |
+| Tokens seen | ~1.84B | ~5M per epoch |
+| Peak learning rate | 3e-4 | 1e-4 |
 | Answer window | 128 | 64 |
-| Hardware | 1 × T4, ~8 h | 1 × T4 |
+| Hardware | 1 × T4, ~8.7 h per model | 1 × T4, ~1.3 h per model |
+| Checkpoint | best validation loss | best validation loss |
 
 Common setup: AdamW with separate weight-decay groups, linear warm-up followed by cosine decay, fp16 autocast with gradient scaling and clipping, step-based schedule with periodic validation, and checkpoints that separate *initialise from* and *resume from*.
+
+| Best validation loss | Classic | Thinking |
+| --- | ---: | ---: |
+| Pretraining | **4.38** | 4.45 |
+| SFT | 0.929 | **0.903** |
 
 ### Reinforcement learning
 
@@ -101,18 +116,18 @@ The reward is a set of rules aimed at the defects actually seen in SFT samples:
 | Reply ends a sentence (`.`, `!`, `?`) | +0.5 |
 | Repeated trigrams above 20% | −3 × repeat rate |
 
-Setup: 500 steps × 16 contexts × 8 samples, lr 5e-6, KL weight 0.1, one T4, ~25 min. The checkpoint is chosen by mean reward on a fixed set of held-out prompts.
+Setup: 500 steps × 16 contexts × 8 samples, lr 5e-6, KL weight 0.1, one T4, 25–35 min per model. The checkpoint is chosen by mean reward on a fixed set of held-out prompts.
 
 On 32 test dialogues × 4 samples:
 
-| | SFT | RL |
-| --- | ---: | ---: |
-| Mean reward | −1.15 | **−0.18** |
-| Replies without `<eos>` | 38.3% | **15.6%** |
-| Mean reply length, tokens | 34.8 | **22.7** |
-| Test diffusion loss | **0.91** | 1.15 |
+| | Classic · SFT | Classic · RL | Thinking · SFT | Thinking · RL |
+| --- | ---: | ---: | ---: | ---: |
+| Mean reward | −0.67 | **+0.03** | −1.15 | −0.18 |
+| Replies without `<eos>` | 17.2% | **7.8%** | 38.3% | 15.6% |
+| Mean reply length, tokens | 19.7 | 22.0 | 34.8 | 22.7 |
+| Test diffusion loss | **0.92** | 1.04 | **0.91** | 1.15 |
 
-RL removes most run-on and repetitive replies. The higher test loss is the expected cost: the policy moves away from the SFT data distribution towards the rewarded behaviour.
+For both variants RL removes most run-on and repetitive replies. The higher test loss is the expected cost: the policy moves away from the SFT data distribution towards the rewarded behaviour.
 
 ## Sampling
 
@@ -120,19 +135,21 @@ Replies are generated block by block inside the answer window. At each step the 
 
 ## Benchmarks
 
-Zero-shot, `lm-evaluation-harness` 0.4.13, accuracy %. The harness scores answer options by log-likelihood; for the diffusion model it is computed by un-masking the option left to right inside the 64-token answer slot.
+Zero-shot, `lm-evaluation-harness` 0.4.13, accuracy %. The harness scores answer options by log-likelihood; for the diffusion models it is computed by un-masking the option left to right inside the 64-token answer slot.
 
 | Model | Params | PIQA | HellaSwag* | ARC-e* | ARC-c* | WinoG | SciQ | LAMBADA | BLiMP |
 | :-- | --: | --: | --: | --: | --: | --: | --: | --: | --: |
-| ours · SFT | 19.8M | 52.6 | 26.0 | 30.3 | 22.4 | 51.9 | 33.7 | 0.0 | 58.9 |
-| ours · RL | 19.8M | 52.8 | 25.8 | 30.7 | 22.2 | 50.0 | 29.5 | 0.0 | 58.5 |
+| Classic · SFT | 20.1M | 54.5 | 26.7 | **31.9** | 21.0 | 49.2 | **48.7** | 0.0 | 56.0 |
+| Classic · RL | 20.1M | **54.8** | **26.8** | 30.0 | 21.6 | 49.6 | 45.6 | **0.3** | 56.2 |
+| Thinking · SFT | 19.8M | 52.6 | 26.0 | 30.3 | **22.4** | **51.9** | 33.7 | 0.0 | **58.9** |
+| Thinking · RL | 19.8M | 52.8 | 25.8 | 30.7 | 22.2 | 50.0 | 29.5 | 0.0 | 58.5 |
 | Pythia-14M | 14M | 56.9 | 26.5 | 32.7 | 21.0 | 51.3 | 50.4 | 10.3 | 67.7 |
 | GPT-2 small | 124M | 62.9 | 31.1 | 39.5 | 22.7 | 51.6 | 75.2 | 32.6 | 82.1 |
 | *random* | — | 50.0 | 25.0 | 25.0 | 25.0 | 50.0 | 25.0 | 0.0 | 50.0 |
 
-\* length-normalised accuracy. 8.5% of PIQA and 1.7% of HellaSwag options do not fit the 64-token slot and are truncated. The full table, with Pythia-70M and SmolLM2-135M, is in [`sprint3/thinking_module/results.md`](sprint3/thinking_module/results.md).
+\* length-normalised accuracy. **Bold** — best among this project's models. 8.5% of PIQA and 1.7% of HellaSwag options do not fit the 64-token slot and are truncated. Full tables, including Pythia-70M and SmolLM2-135M, are in [`sprint3/classic/results.md`](sprint3/classic/results.md) and [`sprint3/thinking_module/results.md`](sprint3/thinking_module/results.md).
 
-The model is above chance on ARC-Easy, SciQ and BLiMP and close to chance elsewhere. For scale: Pythia-14M was pretrained on about 300B tokens, this model on 1.47B. RL leaves benchmark scores essentially unchanged, which is expected — it reshapes the form of replies rather than adding knowledge.
+The classic variant is ahead on PIQA, HellaSwag, ARC-Easy and especially SciQ, the Thinking variant on BLiMP; the remaining differences are within noise near chance level. Both models are well above chance on ARC-Easy, SciQ and BLiMP. For scale: Pythia-14M was pretrained on about 300B tokens, these models on 1.84B. RL leaves benchmark scores essentially unchanged, which is expected — it reshapes the form of replies rather than adding knowledge.
 
 ---
 
@@ -142,25 +159,13 @@ The model is above chance on ARC-Easy, SciQ and BLiMP and close to chance elsewh
 
 Corpus collection, cleaning, deduplication, deterministic splits, BPE training, binary sharding.
 
-### Sprint 2 — Pretraining, SFT, RL
+### Sprint 2 — Pretraining, SFT, RL · done
 
-Thinking model · done
-- [x] Encoder–decoder masked-diffusion model
-- [x] Pretraining
-- [x] Supervised fine-tuning
-- [x] Block-wise sampler with confidence-based remasking
-- [x] Reinforcement learning
+Encoder–decoder masked-diffusion model in two variants, pretraining, supervised fine-tuning, GRPO with rule-based rewards, block-wise sampler with confidence-based remasking.
 
-Baseline without Thinking · *coming soon*
-- [ ] Pretraining — same data and schedule, 6 encoder + 2 decoder blocks to match the parameter count
-- [ ] Supervised fine-tuning
-- [ ] Reinforcement learning
+### Sprint 3 — Benchmarking · done
 
-### Sprint 3 — Benchmarking
-
-- [x] Zero-shot evaluation of the Thinking model, SFT and RL checkpoints, against Pythia, GPT-2 and SmolLM2
-- [ ] Baseline evaluation on the same suite — *coming soon*
-- [ ] Thinking vs. baseline comparison at equal parameters and equal training budget — *coming soon*
+Zero-shot evaluation of both variants at the SFT and RL stages against Pythia, GPT-2 and SmolLM2, with an `lm-evaluation-harness` wrapper for diffusion likelihood.
 
 ### Sprint 4 — Production runtime · coming soon
 
@@ -178,15 +183,22 @@ sprint1/                              data and tokenizer
   data-processing.ipynb               normalisation, filtering, deduplication, deterministic splits
   tokenizer.ipynb                     BPE training, round-trip checks, binary sharding
 sprint2/                              training
+  classic/
+    pretrain-classic.ipynb            model definition, masked-diffusion pretraining
+    sft-classic.ipynb                 supervised fine-tuning, test-set evaluation, sampling
+    rl-classic.ipynb                  GRPO, rule-based rewards, SFT vs. RL comparison
   thinking_module/
-    pretrain.ipynb                    model definition, masked-diffusion pretraining
-    sft.ipynb                         supervised fine-tuning, test-set evaluation, sampling
-    reinforcement_learning.ipynb      GRPO, rule-based rewards, SFT vs. RL comparison
+    pretrain.ipynb
+    sft.ipynb
+    reinforcement_learning.ipynb
 sprint3/                              evaluation
-  thinking_module/
-    benchmarks.ipynb                  lm-evaluation-harness wrapper for the diffusion model, baselines
+  classic/
+    benchmarks-classic.ipynb          lm-evaluation-harness wrapper for the diffusion model
     results.md                        full benchmark tables
-docs/                                 architecture diagram and its source
+  thinking_module/
+    benchmarks.ipynb                  same, plus reference models
+    results.md
+docs/                                 architecture diagrams and their source
 ```
 
 All notebooks were run on Kaggle. Model weights and the tokenised corpus are not stored in the repository.
