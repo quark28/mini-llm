@@ -6,7 +6,6 @@
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/quark28/mini-llm/blob/main/demo.ipynb)
 [![Model on Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Model-mini--llm--classic--sft-FFD21E)](https://huggingface.co/quark28/mini-llm-classic-sft)
-[![Demo Space](https://img.shields.io/badge/%F0%9F%A4%97%20Demo-Space-FFD21E)](https://huggingface.co/spaces/quark28/mini-llm-chat)
 <br>
 ![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white)
 ![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-005CED?logo=onnx&logoColor=white)
